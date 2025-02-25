@@ -41,8 +41,7 @@ class BotHandler:
             await self.show_tasks(update, tasks)
 
         elif query.data == 'add':
-            await query.message.delete()
-            await context.bot.send_message(chat_id=user_id, text="Введите название новой задачи:")
+            await query.message.edit_text(text="Введите название новой задачи:")
             context.user_data['adding_task'] = True
 
         elif query.data == 'main_menu':
@@ -60,65 +59,84 @@ class BotHandler:
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.callback_query.message.edit_text("📋 Ваши задачи:", reply_markup=reply_markup)
 
+    @staticmethod
+    def is_valid_time_format(text: str) -> bool:
+        return bool(re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)", text))
+
+
     async def handle_text_input(self, update: Update, context: CallbackContext) -> None:
         """Обрабатывает текстовый ввод (название задачи, время, произвольную периодичность)"""
-        text = update.message.text.strip()
+        try:
+            text = update.message.text.strip()
 
-        if context.user_data.get('waiting_for_time'):
-            if re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)", text):
-                context.user_data["task_time"] = text
-                context.user_data["waiting_for_time"] = False
+            if not any([
+                context.user_data.get('waiting_for_time'),
+                context.user_data.get('editing_task'),
+                context.user_data.get('adding_task')
+            ]):
+                await update.message.reply_text("❌ Я вас не понял. Используйте кнопки меню.")
+                return
 
-                keyboard = [
-                    [InlineKeyboardButton("Разовая", callback_data="once")],
-                    [InlineKeyboardButton("Каждый день", callback_data="daily")],
-                    [InlineKeyboardButton("Раз в неделю", callback_data="weekly")],
-                    [InlineKeyboardButton("Раз в месяц", callback_data="monthly")],
-                    [InlineKeyboardButton("Раз в год", callback_data="yearly")],
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.message.reply_text("Выберите периодичность задачи:", reply_markup=reply_markup)
-            else:
-                await update.message.reply_text("❌ Некорректный формат. Введите время в формате ЧЧ:ММ (например, 09:45):")
-            return
+            if context.user_data.get('waiting_for_time'):
+                if self.is_valid_time_format(text):
+                    context.user_data["task_time"] = text
+                    context.user_data["waiting_for_time"] = False
 
-        if context.user_data.get("editing_task"):
-            task = context.user_data.get("selected_task")
-            edit_type = context.user_data.get("edit_type")
+                    keyboard = [
+                        [InlineKeyboardButton("Разовая", callback_data="once")],
+                        [InlineKeyboardButton("Каждый день", callback_data="daily")],
+                        [InlineKeyboardButton("Раз в неделю", callback_data="weekly")],
+                        [InlineKeyboardButton("Раз в месяц", callback_data="monthly")],
+                        [InlineKeyboardButton("Раз в год", callback_data="yearly")],
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    await update.message.reply_text("Выберите периодичность задачи:", reply_markup=reply_markup)
+                else:
+                    await update.message.reply_text("❌ Некорректный формат. Введите время в формате ЧЧ:ММ (например, 09:45):")
+                return
 
-            if not task:
-                await update.message.reply_text("❌ Ошибка: Задача не выбрана.")
+            if context.user_data.get("editing_task"):
+                task = context.user_data.get("selected_task")
+                edit_type = context.user_data.get("edit_type")
+
+                if not task:
+                    await update.message.reply_text("❌ Ошибка: Задача не выбрана.")
+                    await self.main_menu(update, context)
+                    return
+
+                if edit_type == "name":
+                    task.name = text
+                elif edit_type == "time":
+                    if self.is_valid_time_format(text):
+                        task.time = text
+                    else:
+                        await update.message.reply_text("❌ Некорректный формат времени. Введите ЧЧ:ММ (например, 09:45).")
+                        return
+                else:
+                    await update.message.reply_text("❌ Некорректный ввод.")
+                    return
+                
+                self.db_manager.update_task(task)
+                context.user_data["selected_task"] = task
+                edit_labels = {"name": "Имя", "time": "Время"}
+                edit_label = edit_labels.get(edit_type, edit_type.capitalize())
+                await update.message.reply_text(f"✅ {edit_label} изменено.")
+
+                # Очистка контекста
+                context.user_data.pop("editing_task", None)
+                context.user_data.pop("edit_type", None)
                 await self.main_menu(update, context)
                 return
 
-            if edit_type == "name":
-                task.name = text
-            elif edit_type == "time":
-                if re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)", text):
-                    task.time = text
-                else:
-                    await update.message.reply_text("❌ Некорректный формат времени. Введите ЧЧ:ММ (например, 09:45).")
-                    return
-            else:
-                await update.message.reply_text("❌ Некорректный ввод.")
-                return
-            
-            self.db_manager.update_task(task)
-            context.user_data["selected_task"] = task
-            edit_labels = {"name": "Имя", "time": "Время"}
-            edit_label = edit_labels.get(edit_type, edit_type.capitalize())
-            await update.message.reply_text(f"✅ {edit_label} изменено.")
+            if context.user_data.get('adding_task'):
+                context.user_data['task_name'] = text
+                context.user_data['adding_task'] = False
+                await update.message.reply_text(f"Название задачи '{text}' сохранено. Теперь выберите дату выполнения.")
+                await self.ask_for_date(update, context)
 
-            context.user_data.pop("editing_task")
-            context.user_data.pop("edit_type")
-            await self.main_menu(update, context)
-            return
-
-        if context.user_data.get('adding_task'):
-            context.user_data['task_name'] = text
-            context.user_data['adding_task'] = False
-            await update.message.reply_text(f"Название задачи '{text}' сохранено. Теперь выберите дату выполнения.")
-            await self.ask_for_date(update, context)
+        except Exception as e:
+            await update.message.reply_text("⚠️ Произошла ошибка при обработке ввода. Попробуйте еще раз.")
+            print(f"Ошибка в handle_text_input: {e}")  # Логирование ошибки в консоль
 
     async def ask_for_date(self, update: Update, context: CallbackContext) -> None:
         """Запускает календарь для выбора даты"""
@@ -215,7 +233,7 @@ class BotHandler:
                 await update.message.reply_text(error_message)
             return
 
-        self.db_manager.add_task(user_id, task_name, task_date, task_time, task_recurrence)
+        await self.db_manager.add_task(user_id, task_name, task_date, task_time, task_recurrence)
         confirmation_text = "✅ Задача успешно сохранена!"
 
         if update.callback_query:

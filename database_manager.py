@@ -1,6 +1,7 @@
 import sqlite3
 import aiosqlite
 import datetime
+from task import Task
 
 class DatabaseManager:
     def __init__(self, db_path="tasks.db"):
@@ -38,10 +39,12 @@ class DatabaseManager:
         query = "SELECT id, user_id, name, date, time, recurrence FROM tasks WHERE id = ?"
         return self.execute_query(query, (task_id,), fetchone=True)
 
-    def add_task(self, user_id, name, date, time, recurrence):
-        """Добавляет новую задачу"""
+    async def add_task(self, user_id, name, date, time, recurrence):
+        """Асинхронно добавляет новую задачу"""
         query = "INSERT INTO tasks (user_id, name, date, time, recurrence) VALUES (?, ?, ?, ?, ?)"
-        self.execute_query(query, (user_id, name, date, time, recurrence))
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(query, (user_id, name, date, time, recurrence))
+            await db.commit()
 
     def get_tasks(self, user_id, max_date=None):
         """Получает все задачи пользователя. 
@@ -92,8 +95,38 @@ class DatabaseManager:
         self.execute_query(query, (task_id,))
 
     async def get_tasks_for_today(self):
-        """Получаем задачи на сегодня"""
+        """Получает задачи на сегодня и просроченные"""
         today = datetime.datetime.now().strftime("%Y-%m-%d")
-        async with aiosqlite.connect("tasks.db") as db:
-            async with db.execute("SELECT * FROM tasks WHERE date <= ? OR recurrence != 'once'", (today,)) as cursor:
-                return await cursor.fetchall()
+        
+        query = """
+        SELECT id, user_id, name, date, time, recurrence 
+        FROM tasks 
+        WHERE date <= ? OR recurrence != 'once'
+        """
+        
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(query, (today,)) as cursor:
+                rows = await cursor.fetchall()
+                tasks = [Task(*row) for row in rows]
+                return tasks
+            
+    async def get_all_tasks_with_prefix(self, prefix="❌"):
+        """Получает все задачи, у которых в начале имени есть указанный префикс (по умолчанию '❌')."""
+        query = """
+        SELECT id, user_id, name, date, time, recurrence 
+        FROM tasks 
+        WHERE name LIKE ?
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(query, (f"{prefix}%",)) as cursor:
+                rows = await cursor.fetchall()
+                return [Task(*row) for row in rows]
+
+
+    async def get_all_users(self):
+        """Получает список уникальных user_id из базы данных"""
+        query = "SELECT DISTINCT user_id FROM tasks"
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(query) as cursor:
+                rows = await cursor.fetchall()
+                return [row[0] for row in rows]

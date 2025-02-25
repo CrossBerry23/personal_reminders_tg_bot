@@ -41,7 +41,7 @@ def main():
     application.add_handler(CallbackQueryHandler(bot_handler.confirm_task_completion, pattern="^(confirm_complete|cancel)$"))
     application.add_handler(CallbackQueryHandler(bot_handler.edit_task, pattern="^(edit_name|edit_date|edit_time|edit_recurrence)$"))
     application.add_handler(CallbackQueryHandler(bot_handler.handle_recurrence_change, pattern=r"^recurrence_"))
-    application.add_handler(CallbackQueryHandler(bot_handler.button_handler))
+    application.add_handler(CallbackQueryHandler(bot_handler.button_handler, pattern="^(list_today|list|add|main_menu)$"))
 
     # Обработчик текстового ввода
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot_handler.handle_text_input))
