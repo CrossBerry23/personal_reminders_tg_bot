@@ -9,55 +9,17 @@ class BotHandler:
     def __init__(self):
         self.db_manager = DatabaseManager()
 
-    async def main_menu(self, update: Update, context: CallbackContext) -> None:
-        """Главное меню бота"""
-        keyboard = [
-            [InlineKeyboardButton("📅 Просмотр задач на сегодня", callback_data="list_today")],
-            [InlineKeyboardButton("📋 Просмотр всех задач", callback_data="list")],
-            [InlineKeyboardButton("➕ Добавить задачу", callback_data="add")],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        if update.callback_query:
-            await update.callback_query.message.edit_text("Выберите действие: ⚙️", reply_markup=reply_markup)
-            await update.callback_query.answer()
-        else:
-            await update.message.reply_text("Выберите действие: ⚙️", reply_markup=reply_markup)
-
-    async def button_handler(self, update: Update, context: CallbackContext) -> None:
-        """Обработчик нажатий на кнопки"""
-        query = update.callback_query
-        user_id = query.message.chat_id
-        task_manager = TaskManager(user_id, self.db_manager)
-        
-        await query.answer()
-
-        if query.data == 'list_today':
-            tasks = task_manager.get_today_tasks()
-            await self.show_tasks(update, tasks)
-
-        elif query.data == 'list':
-            tasks = task_manager.get_all_tasks()
-            await self.show_tasks(update, tasks)
-
-        elif query.data == 'add':
-            await query.message.edit_text(text="Введите название новой задачи:")
-            context.user_data['adding_task'] = True
-
-        elif query.data == 'main_menu':
-            await self.main_menu(update, context)
-
-    async def show_tasks(self, update: Update, tasks):
-        """Выводит список задач в виде inline-кнопок"""
-        if not tasks:
-            await update.callback_query.message.reply_text("📭 Нет активных задач.")
-            await self.main_menu(update, None)
-            return
-
-        keyboard = [[InlineKeyboardButton(f"{task.name} ({task.date} {task.time})", callback_data=f"task_{task.task_id}")] for task in tasks]
-        keyboard.append([InlineKeyboardButton("🔙 Вернуться в меню", callback_data="main_menu")])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.callback_query.message.edit_text("📋 Ваши задачи:", reply_markup=reply_markup)
+    @staticmethod
+    def recurrence_name(recurrence: str) -> str:
+        """Преобразует код периодичности в читаемое название"""
+        recurrence_mapping = {
+            "once": "Единожды",
+            "daily": "Каждый день",
+            "weekly": "Раз в неделю",
+            "monthly": "Раз в месяц",
+            "yearly": "Раз в год"
+        }
+        return recurrence_mapping.get(recurrence, "Неизвестный тип")
 
     @staticmethod
     def is_valid_time_format(text: str) -> bool:
@@ -122,7 +84,6 @@ class BotHandler:
                 edit_label = edit_labels.get(edit_type, edit_type.capitalize())
                 await update.message.reply_text(f"✅ {edit_label} изменено.")
 
-                # Очистка контекста
                 context.user_data.pop("editing_task", None)
                 context.user_data.pop("edit_type", None)
                 await self.main_menu(update, context)
@@ -136,7 +97,57 @@ class BotHandler:
 
         except Exception as e:
             await update.message.reply_text("⚠️ Произошла ошибка при обработке ввода. Попробуйте еще раз.")
-            print(f"Ошибка в handle_text_input: {e}")  # Логирование ошибки в консоль
+            print(f"Ошибка в handle_text_input: {e}")
+
+    async def main_menu(self, update: Update, context: CallbackContext) -> None:
+        """Главное меню бота"""
+        keyboard = [
+            [InlineKeyboardButton("📅 Просмотр задач на сегодня", callback_data="list_today")],
+            [InlineKeyboardButton("📋 Просмотр всех задач", callback_data="list")],
+            [InlineKeyboardButton("➕ Добавить задачу", callback_data="add")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        if update.callback_query:
+            await update.callback_query.message.edit_text("Выберите действие: ⚙️", reply_markup=reply_markup)
+            await update.callback_query.answer()
+        else:
+            await update.message.reply_text("Выберите действие: ⚙️", reply_markup=reply_markup)
+
+    async def button_handler(self, update: Update, context: CallbackContext) -> None:
+        """Обработчик нажатий на кнопки"""
+        query = update.callback_query
+        user_id = query.message.chat_id
+        task_manager = TaskManager(user_id, self.db_manager)
+        
+        await query.answer()
+
+        if query.data == 'list_today':
+            tasks = task_manager.get_today_tasks()
+            await self.show_tasks(update, tasks)
+
+        elif query.data == 'list':
+            tasks = task_manager.get_all_tasks()
+            await self.show_tasks(update, tasks)
+
+        elif query.data == 'add':
+            await query.message.edit_text(text="Введите название новой задачи:")
+            context.user_data['adding_task'] = True
+
+        elif query.data == 'main_menu':
+            await self.main_menu(update, context)
+
+    async def show_tasks(self, update: Update, tasks):
+        """Выводит список задач в виде inline-кнопок"""
+        if not tasks:
+            await update.callback_query.message.reply_text("📭 Нет активных задач.")
+            await self.main_menu(update, None)
+            return
+
+        keyboard = [[InlineKeyboardButton(f"{task.name} ({task.date} {task.time})", callback_data=f"task_{task.task_id}")] for task in tasks]
+        keyboard.append([InlineKeyboardButton("🔙 Вернуться в меню", callback_data="main_menu")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.callback_query.message.edit_text("📋 Ваши задачи:", reply_markup=reply_markup)
 
     async def ask_for_date(self, update: Update, context: CallbackContext) -> None:
         """Запускает календарь для выбора даты"""
@@ -148,7 +159,7 @@ class BotHandler:
             await query.message.delete()
 
         if message is None:
-            return  # Защита от возможных ошибок
+            return
 
         calendar, step = DetailedTelegramCalendar(calendar_id="calendar").build()
         await message.reply_text(f"Выберите {LSTEP[step]}", reply_markup=calendar)
@@ -207,14 +218,9 @@ class BotHandler:
     async def period_choice_handler(self, update: Update, context: CallbackContext) -> None:
         """Обрабатывает выбор периодичности задачи"""
         query = update.callback_query
-        recurrence = query.data if query.data != "custom" else None
+        recurrence = query.data
         context.user_data["task_recurrence"] = recurrence
-
-        if recurrence == "custom":
-            await query.message.edit_text("✏ Введите произвольную периодичность (пример: `1y 2m 1w 3d`):")
-            context.user_data["waiting_for_custom_recurrence"] = True
-        else:
-            await self.save_task(update, context)
+        await self.save_task(update, context)
 
     async def save_task(self, update: Update, context: CallbackContext) -> None:
         """Сохраняет задачу в базу данных"""
@@ -243,18 +249,6 @@ class BotHandler:
 
         user_data.clear()
         await self.main_menu(update, context)
-
-    @staticmethod
-    def recurrence_name(recurrence: str) -> str:
-        """Преобразует код периодичности в читаемое название"""
-        recurrence_mapping = {
-            "once": "Единожды",
-            "daily": "Каждый день",
-            "weekly": "Раз в неделю",
-            "monthly": "Раз в месяц",
-            "yearly": "Раз в год"
-        }
-        return recurrence_mapping.get(recurrence, "Неизвестный тип")
 
     async def handle_task_selection(self, update: Update, context: CallbackContext) -> None:
         """Обрабатывает выбор задачи и открывает меню task_edit"""
@@ -367,40 +361,3 @@ class BotHandler:
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.edit_text("Выберите новую периодичность:", reply_markup=reply_markup)
-
-
-    async def handle_edit_text(self, update: Update, context: CallbackContext) -> None:
-        """Обрабатывает ввод нового названия, времени или периодичности"""
-        task = context.user_data.get("selected_task")
-        if not task:
-            await update.message.reply_text("❌ Ошибка: Задача не выбрана.")
-            return
-
-        text = update.message.text.strip()
-        edit_type = context.user_data.get("edit_type")
-
-        if edit_type == "name":
-            task.name = text
-        elif edit_type == "time":
-            if not re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)", text):
-                await update.message.reply_text("❌ Некорректный формат. Введите время в формате ЧЧ:ММ (например, 09:45):")
-                return
-            task.time = text
-        elif edit_type == "recurrence":
-            task.recurrence = text
-        else:
-            await update.message.reply_text("❌ Некорректный тип редактирования.")
-            return
-
-        self.db_manager.update_task(task)
-        context.user_data["selected_task"] = task
-        await update.message.reply_text(f"✅ {edit_type.capitalize()} изменено на '{text}'.")
-
-        context.user_data.pop("editing_task", None)
-        context.user_data.pop("edit_type", None)
-
-    async def back_to_task_edit(self, update: Update, context: CallbackContext) -> None:
-        """Возвращает пользователя в меню task_edit"""
-        task = context.user_data.get("selected_task")
-        if task:
-            await self.handle_task_selection(update, context)

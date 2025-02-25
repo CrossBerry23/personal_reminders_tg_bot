@@ -35,7 +35,7 @@ def main():
     
     # Обработчики кнопок
     application.add_handler(CallbackQueryHandler(bot_handler.calendar_handler, pattern="^cbcal_.*"))
-    application.add_handler(CallbackQueryHandler(bot_handler.period_choice_handler, pattern="^(once|daily|weekly|monthly|yearly|custom)$"))
+    application.add_handler(CallbackQueryHandler(bot_handler.period_choice_handler, pattern="^(once|daily|weekly|monthly|yearly)$"))
     application.add_handler(CallbackQueryHandler(bot_handler.handle_task_selection, pattern=r"^task_\d+$"))
     application.add_handler(CallbackQueryHandler(bot_handler.task_edit_handler, pattern="^(complete_task|edit_task|back_to_menu)$"))
     application.add_handler(CallbackQueryHandler(bot_handler.confirm_task_completion, pattern="^(confirm_complete|cancel)$"))
